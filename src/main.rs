@@ -1,22 +1,29 @@
+use clap::Parser;
 use reqwest::blocking::{multipart, Client};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let path = match std::env::args().nth(1) {
-        Some(path) => path,
-        None => {
-            println!("no file specified");
-            "https://hyper.rs".into()
-        }
-    };
+#[derive(Parser)]
+struct Cli {
+    path: std::path::PathBuf,
+}
 
-    let file_data = std::fs::read(&path)?;
-    let file_name = path.split('/').last().unwrap_or("upload");
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cli = Cli::parse();
 
     let form = multipart::Form::new().part(
         "file",
-        multipart::Part::bytes(file_data)
-            .file_name(file_name.to_string())
-            .mime_str("image/png")?,
+        multipart::Part::bytes(std::fs::read(&cli.path).expect("could not read file"))
+            .file_name(
+                cli.path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .ok_or("invalid or missing file name")?
+                    .to_string(),
+            )
+            .mime_str(
+                mime_guess::from_path(&cli.path)
+                    .first_or_octet_stream()
+                    .as_ref(),
+            )?,
     );
 
     let mut response = Client::new()
